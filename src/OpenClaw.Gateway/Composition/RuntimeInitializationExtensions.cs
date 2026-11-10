@@ -79,18 +79,13 @@ internal static partial class RuntimeInitializationExtensions
             services,
             resolvedRuntimeWorkspacePath,
             startup.RuntimeState,
-            artifactRuntime,
-            startupLogger);
+            artifactRuntime);
         if (config.Plugins.Mcp.Enabled)
             await services.McpRegistry.RegisterToolsAsync(services.NativeRegistry, app.Lifetime.ApplicationStopping);
         await using var mcpAppStartupCleanup = new AsyncStartupCleanupGuard();
         if (config.McpApps.Enabled)
         {
-            await services.McpAppRegistry.RegisterMcpAppToolsAsync(
-                services.NativeRegistry,
-                config.McpApps,
-                app.Services.GetRequiredService<IMcpDelegatedToolInvoker>(),
-                app.Lifetime.ApplicationStopping);
+            await services.McpAppRegistry.RegisterMcpAppToolsAsync(services.NativeRegistry, config.McpApps, app.Lifetime.ApplicationStopping);
             mcpAppStartupCleanup.Register(() => services.McpAppRegistry.DisposeAsync());
         }
         LlmClientFactory.ResetDynamicProviders();
@@ -205,7 +200,7 @@ internal static partial class RuntimeInitializationExtensions
 
         WireLoopCommandCallback(app, services);
 
-        var middlewarePipeline = CreateMiddlewarePipeline(config, loggerFactory, services.ContractGovernance, services.SessionManager);
+        var middlewarePipeline = CreateMiddlewarePipeline(config, loggerFactory, services.ContractGovernance, services.SessionManager, app.Services);
         var skillWatcher = new SkillWatcherService(
             config.Skills,
             resolvedRuntimeWorkspacePath,

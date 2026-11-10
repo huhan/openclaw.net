@@ -32,6 +32,9 @@ public sealed class GatewayConfig
     public PluginsConfig Plugins { get; set; } = new();
     public SkillsConfig Skills { get; set; } = new();
     public DelegationConfig Delegation { get; set; } = new();
+
+    /// <summary>Cumulative per-user token budget across sessions (SQLite ledger; admins exempt by default).</summary>
+    public UserTokenBudgetConfig UserTokenBudget { get; set; } = new();
     public WorkflowsConfig Workflows { get; set; } = new();
     public PulseConfig Pulse { get; set; } = new();
     public CronConfig Cron { get; set; } = new();

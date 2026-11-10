@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using OpenClaw.Channels;
@@ -11,6 +12,7 @@ using OpenClaw.Agent.Plugins;
 using OpenClaw.Agent.Routing;
 using OpenClaw.Agent.Tools;
 using OpenClaw.Core.Abstractions;
+using OpenClaw.Core.Budgeting;
 using OpenClaw.Core.ExternalCli;
 using OpenClaw.Core.Features;
 using OpenClaw.Core.Governance;
@@ -24,6 +26,7 @@ using OpenClaw.Core.Security;
 using OpenClaw.Core.Services;
 using OpenClaw.Core.Sessions;
 using OpenClaw.Gateway.Bootstrap;
+using OpenClaw.Gateway.Budgeting;
 using OpenClaw.Gateway.Extensions;
 using OpenClaw.Gateway.Mcp;
 using OpenClaw.Gateway.Models;
@@ -130,11 +133,19 @@ internal static class CoreServicesExtensions
             sp.GetRequiredService<ILogger<TurnTokenUsageAuditLog>>(),
             auditQueueCapacity: 4096));
         services.AddSingleton<ITurnTokenUsageObserver>(sp =>
-            new CompositeTurnTokenUsageObserver([
+        {
+            var observers = new List<ITurnTokenUsageObserver>
+            {
                 new ProviderUsageTurnTokenUsageObserver(sp.GetRequiredService<ProviderUsageTracker>()),
                 sp.GetRequiredService<TurnTokenUsageAuditLog>()
-            ],
-            sp.GetRequiredService<ILogger<CompositeTurnTokenUsageObserver>>()));
+            };
+            var userLedgerObserver = sp.GetService<UserTokenLedgerTurnObserver>();
+            if (userLedgerObserver is not null)
+                observers.Add(userLedgerObserver);
+            return new CompositeTurnTokenUsageObserver(
+                observers,
+                sp.GetRequiredService<ILogger<CompositeTurnTokenUsageObserver>>());
+        });
         services.AddSingleton<ToolUsageTracker>();
         services.AddSingleton<ProviderSmokeRegistry>();
         services.AddSingleton<StartupNoticeCollector>();
@@ -147,7 +158,20 @@ internal static class CoreServicesExtensions
         services.AddSingleton<ConfiguredModelProfileRegistry>();
         services.AddSingleton<IModelProfileRegistry>(sp => sp.GetRequiredService<ConfiguredModelProfileRegistry>());
         services.AddSingleton<IModelSelectionPolicy, DefaultModelSelectionPolicy>();
-        services.AddDynamicTurnRouting(config.DynamicTurnRouting, config.Memory.StoragePath);
+        services.AddSingleton(sp =>
+            DynamicTurnRoutingConfigNormalizer.Normalize(
+                config.DynamicTurnRouting,
+                new OpenSquillaBundleLoader()));
+        services.AddSingleton<ITurnRoutingPolicy>(sp =>
+        {
+            var resolvedRoutingConfig = sp.GetRequiredService<ResolvedDynamicTurnRoutingConfig>();
+            if (!resolvedRoutingConfig.Enabled)
+                return NoopTurnRoutingPolicy.Instance;
+
+            return new OnnxTurnRoutingPolicy(
+                resolvedRoutingConfig,
+                sp.GetRequiredService<ILogger<OnnxTurnRoutingPolicy>>());
+        });
         services.AddSingleton<ModelEvaluationRunner>();
         services.AddSingleton<PromptCacheTraceWriter>();
         services.AddSingleton<PromptCacheCoordinator>();

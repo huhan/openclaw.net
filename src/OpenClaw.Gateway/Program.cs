@@ -4,6 +4,7 @@ using OpenClaw.Gateway.Bootstrap;
 using OpenClaw.Gateway.Composition;
 using OpenClaw.Gateway.Endpoints;
 using OpenClaw.Gateway.Mcp;
+using OpenClaw.Gateway.Budgeting;
 using OpenClaw.Gateway.Pipeline;
 using OpenClaw.Gateway.Profiles;
 #if !OPENCLAW_VAULT_EXCLUDED
@@ -77,6 +78,14 @@ while (true)
 #if !OPENCLAW_VAULT_EXCLUDED
         builder.Services.AddOpenClawVaultSecrets(startup.Config.Security.Vault);
 #endif
+
+        // Loopback-open gateways only ever see the local machine owner (an implicit
+        // admin), so every caller is exempt from user-level token budgeting there.
+        var loopbackOpenAuth = !startup.IsNonLoopbackBind
+            && !startup.Config.Security.AlwaysRequireAuth
+            && string.IsNullOrWhiteSpace(startup.Config.Security.Oidc.Authority);
+        builder.Services.AddUserTokenBudget(startup.Config, loopbackOpenAuth);
+
         builder.Services.AddOpenClawMcpServices(startup);
         builder.Services.ApplyOpenClawRuntimeProfile(startup);
         builder.Services.AddMicrosoftAgentFramework(builder.Configuration);

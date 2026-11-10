@@ -5,7 +5,6 @@
     <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
     <CentralPackageFloatingVersionsEnabled>false</CentralPackageFloatingVersionsEnabled>
   </PropertyGroup>
-
   <ItemGroup Label="Core and Microsoft extensions">
     <PackageVersion Include="Jinja2.NET" Version="1.4.1" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />
@@ -31,7 +30,6 @@
     <PackageVersion Include="TickerQ" Version="10.4.0" />
     <PackageVersion Include="YamlDotNet" Version="15.1.2" />
   </ItemGroup>
-
   <ItemGroup Label="Protocols and optional integrations">
     <PackageVersion Include="A2A" Version="1.0.0-preview4" />
     <PackageVersion Include="A2A.AspNetCore" Version="1.0.0-preview4" />
@@ -55,7 +53,6 @@
     <PackageVersion Include="RedNb.Nacos.DependencyInjection" Version="2.1.0" />
     <PackageVersion Include="VaultSharp" Version="1.17.5.1" />
   </ItemGroup>
-
   <ItemGroup Label="Routing and local decision tools">
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.27.0" />
     <PackageVersion Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
@@ -64,7 +61,6 @@
     <PackageVersion Include="ScottPlot" Version="5.1.59" />
     <PackageVersion Include="TorchSharp-cpu" Version="0.107.0" />
   </ItemGroup>
-
   <ItemGroup Label="Desktop and web">
     <PackageVersion Include="Avalonia" Version="12.0.4" />
     <PackageVersion Include="Avalonia.Desktop" Version="12.0.4" />
@@ -82,7 +78,6 @@
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.9" />
     <PackageVersion Include="Tmds.DBus.Protocol" Version="0.94.2" />
   </ItemGroup>
-
   <ItemGroup Label="Telemetry">
     <PackageVersion Include="OpenTelemetry.Api" Version="1.20.1" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
@@ -91,7 +86,6 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.20.2" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.20.1" />
   </ItemGroup>
-
   <ItemGroup Label="Tests">
     <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.0.4" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.9" />
@@ -100,5 +94,4 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
-
 </Project>

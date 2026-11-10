@@ -1218,8 +1218,6 @@ public sealed class SqliteMemoryStore : IMemoryStore, ISessionSnapshotSource, IM
             where.Append(" AND (json_extract(json,'$.state') = $stateInt OR json_extract(json,'$.state') = $stateText)");
         if (!string.IsNullOrEmpty(query.Search))
             where.Append(" AND (id LIKE $search OR json_extract(json,'$.channelId') LIKE $search OR json_extract(json,'$.senderId') LIKE $search)");
-        if (!string.IsNullOrEmpty(query.OwnerAccountId))
-            where.Append(" AND json_extract(json,'$.ownerAccountId') = $ownerAccountId");
 
         await using var countCmd = conn.CreateCommand();
         countCmd.CommandText = $"SELECT COUNT(*) FROM sessions {where}";
@@ -1233,7 +1231,6 @@ public sealed class SqliteMemoryStore : IMemoryStore, ISessionSnapshotSource, IM
             countCmd.Parameters.AddWithValue("$stateText", query.State.Value.ToString());
         }
         if (!string.IsNullOrEmpty(query.Search)) countCmd.Parameters.AddWithValue("$search", $"%{query.Search}%");
-        if (!string.IsNullOrEmpty(query.OwnerAccountId)) countCmd.Parameters.AddWithValue("$ownerAccountId", query.OwnerAccountId);
 
         var total = Convert.ToInt32(await countCmd.ExecuteScalarAsync(ct) ?? 0);
         var skip = (page - 1) * pageSize;
@@ -1254,7 +1251,6 @@ public sealed class SqliteMemoryStore : IMemoryStore, ISessionSnapshotSource, IM
             cmd.Parameters.AddWithValue("$stateText", query.State.Value.ToString());
         }
         if (!string.IsNullOrEmpty(query.Search)) cmd.Parameters.AddWithValue("$search", $"%{query.Search}%");
-        if (!string.IsNullOrEmpty(query.OwnerAccountId)) cmd.Parameters.AddWithValue("$ownerAccountId", query.OwnerAccountId);
         cmd.Parameters.AddWithValue("$limit", pageSize);
         cmd.Parameters.AddWithValue("$offset", skip);
 
@@ -1269,6 +1265,7 @@ public sealed class SqliteMemoryStore : IMemoryStore, ISessionSnapshotSource, IM
                 Id = session.Id,
                 ChannelId = session.ChannelId,
                 SenderId = session.SenderId,
+                AuthenticatedUserId = session.AuthenticatedUserId,
                 StableSessionId = session.StableSessionBinding?.ExternalSessionId,
                 StableSessionNamespace = session.StableSessionBinding?.Namespace,
                 StableSessionOwnerKey = session.StableSessionBinding?.OwnerKey,
@@ -1283,8 +1280,7 @@ public sealed class SqliteMemoryStore : IMemoryStore, ISessionSnapshotSource, IM
                 RunState = session.RunState,
                 BackgroundRunObjective = session.BackgroundRun?.Objective,
                 BackgroundContinuationCount = session.BackgroundRun?.ContinuationCount ?? 0,
-                IsActive = false,
-                OwnerAccountId = session.OwnerAccountId
+                IsActive = false
             });
         }
 

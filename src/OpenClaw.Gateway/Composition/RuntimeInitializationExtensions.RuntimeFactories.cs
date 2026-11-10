@@ -1,10 +1,12 @@
 using System.Collections.Frozen;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using OpenClaw.Agent;
 using OpenClaw.Agent.Integrations;
 using OpenClaw.Agent.Plugins;
 using OpenClaw.Agent.Tools;
 using OpenClaw.Core.Abstractions;
+using OpenClaw.Core.Budgeting;
 using OpenClaw.Core.Memory;
 using OpenClaw.Core.Middleware;
 using OpenClaw.Core.Models;
@@ -131,8 +133,7 @@ internal static partial class RuntimeInitializationExtensions
         RuntimeServices services,
         string? workspacePath,
         GatewayRuntimeState runtimeState,
-        SkillArtifactRuntime artifactRuntime,
-        ILogger startupLogger)
+        SkillArtifactRuntime artifactRuntime)
     {
         var projectId = config.Memory.ProjectId
             ?? Environment.GetEnvironmentVariable("OPENCLAW_PROJECT")
@@ -224,11 +225,6 @@ internal static partial class RuntimeInitializationExtensions
             tools.Add(new FractalMemoryRecentTool(structuredMemoryProvider));
             tools.Add(new FractalMemoryExportTool(structuredMemoryProvider, config.Memory.Fractal));
             tools.Add(new FractalMemoryValidateTool(structuredMemoryProvider));
-            if (structuredMemoryProvider is IStructuredMemoryWorkflowProvider workflowProvider)
-                tools.AddRange(FractalMemoryWorkflowTool.CreateTools(workflowProvider, config.Memory.Fractal));
-            else
-                startupLogger.LogWarning(
-                    "The configured structured memory provider does not support Fractal Memory workflows; workflow agent tools are unavailable.");
 
             if (config.Memory.Fractal.AllowWrites)
             {
@@ -386,7 +382,8 @@ internal static partial class RuntimeInitializationExtensions
         GatewayConfig config,
         ILoggerFactory loggerFactory,
         ContractGovernanceService contractGovernance,
-        SessionManager sessionManager)
+        SessionManager sessionManager,
+        IServiceProvider appServices)
     {
         var middlewareList = new List<IMessageMiddleware>();
         if (config.SessionRateLimitPerMinute > 0)
@@ -399,6 +396,11 @@ internal static partial class RuntimeInitializationExtensions
             config.SessionTokenBudget,
             loggerFactory.CreateLogger("TokenBudget"),
             costChecker: costChecker));
+
+        // Registered only when OpenClaw:UserTokenBudget:Enabled is true.
+        var userTokenBudget = appServices.GetService<UserTokenBudgetMiddleware>();
+        if (userTokenBudget is not null)
+            middlewareList.Add(userTokenBudget);
 
         return new MiddlewarePipeline(middlewareList);
     }
