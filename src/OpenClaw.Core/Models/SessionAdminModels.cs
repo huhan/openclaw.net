@@ -5,8 +5,6 @@ public sealed class SessionSummary
     public required string Id { get; init; }
     public required string ChannelId { get; init; }
     public required string SenderId { get; init; }
-
-    public string? AuthenticatedUserId { get; init; }
     public string? StableSessionId { get; init; }
     public string? StableSessionNamespace { get; init; }
     public string? StableSessionOwnerKey { get; init; }

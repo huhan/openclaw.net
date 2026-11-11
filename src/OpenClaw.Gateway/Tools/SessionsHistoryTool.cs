@@ -46,7 +46,7 @@ internal sealed class SessionsHistoryTool : IToolWithContext
         if (session is null)
             session = await _store.GetSessionAsync(sessionId, ct);
 
-        if (session is null)
+        if (session is null || !SessionAccess.CanRead(session, context.Session.OwnerAccountId))
             return $"Session '{sessionId}' not found.";
 
         var history = session.History;

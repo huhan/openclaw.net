@@ -17,4 +17,18 @@ public static class SessionAccess
            || string.IsNullOrWhiteSpace(accountId)
            || isAdmin
            || string.Equals(session.OwnerAccountId, accountId, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Read visibility for a resolved session. Owned sessions are visible to their owner;
+    /// unowned sessions (legacy loopback, channels, cron) are system data visible only to
+    /// admin-equivalent callers — an identified viewer gets neither other accounts' sessions
+    /// nor unowned ones.
+    /// </summary>
+    public static bool CanRead(Session session, string? viewerOwnerAccountId)
+        => CanRead(session.OwnerAccountId, viewerOwnerAccountId);
+
+    /// <summary>Owner-only overload for hit-level checks that only have the session's owner id.</summary>
+    public static bool CanRead(string? sessionOwnerAccountId, string? viewerOwnerAccountId)
+        => string.IsNullOrWhiteSpace(viewerOwnerAccountId)
+           || string.Equals(sessionOwnerAccountId, viewerOwnerAccountId, StringComparison.Ordinal);
 }

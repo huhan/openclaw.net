@@ -21,7 +21,6 @@ using OpenClaw.Gateway;
 using OpenClaw.Gateway.Bootstrap;
 using OpenClaw.Gateway.Composition;
 using OpenClaw.Gateway.Models;
-using OpenClaw.Gateway.Security;
 using QRCoder;
 
 namespace OpenClaw.Gateway.Endpoints;
@@ -44,7 +43,6 @@ internal static partial class AdminEndpoints
             var authResult = AuthorizeOperator(ctx, startup, browserSessions, operations, requireCsrf: false, endpointScope: "admin.sessions");
             if (authResult.Failure is not null)
                 return authResult.Failure;
-            var auth = authResult.Authorization!;
 
             var query = new SessionListQuery
             {
@@ -67,7 +65,6 @@ internal static partial class AdminEndpoints
                 metadataById,
                 ctx.RequestAborted);
             var active = (await runtime.SessionManager.ListActiveAsync(ctx.RequestAborted))
-                .Where(session => SessionViewScope.CanViewSession(auth, session))
                 .Where(session => SessionAdminQuery.MatchesSessionQuery(session, query, metadataById))
                 .OrderByDescending(static session => session.LastActiveAt)
                 .Select(static session => new SessionSummary
@@ -75,7 +72,6 @@ internal static partial class AdminEndpoints
                     Id = session.Id,
                     ChannelId = session.ChannelId,
                     SenderId = session.SenderId,
-                    AuthenticatedUserId = session.AuthenticatedUserId,
                     StableSessionId = session.StableSessionBinding?.ExternalSessionId,
                     StableSessionNamespace = session.StableSessionBinding?.Namespace,
                     StableSessionOwnerKey = session.StableSessionBinding?.OwnerKey,
@@ -90,7 +86,8 @@ internal static partial class AdminEndpoints
                     RunState = session.RunState,
                     BackgroundRunObjective = session.BackgroundRun?.Objective,
                     BackgroundContinuationCount = session.BackgroundRun?.ContinuationCount ?? 0,
-                    IsActive = true
+                    IsActive = true,
+                    OwnerAccountId = session.OwnerAccountId
                 })
                 .ToArray();
 
@@ -98,13 +95,7 @@ internal static partial class AdminEndpoints
             {
                 Filters = query,
                 Active = active,
-                Persisted = new PagedSessionList
-                {
-                    Page = persisted.Page,
-                    PageSize = persisted.PageSize,
-                    HasMore = persisted.HasMore,
-                    Items = persisted.Items.Where(item => SessionViewScope.CanViewSummary(auth, item)).ToArray()
-                }
+                Persisted = persisted
             }, CoreJsonContext.Default.AdminSessionsResponse);
         });
 
@@ -116,8 +107,6 @@ internal static partial class AdminEndpoints
 
             var session = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
             if (session is null)
-                return Results.NotFound(new OperationStatusResponse { Success = false, Error = "Session not found." });
-            if (!SessionViewScope.CanViewSession(authResult.Authorization!, session))
                 return Results.NotFound(new OperationStatusResponse { Success = false, Error = "Session not found." });
 
             var branches = await runtime.SessionManager.ListBranchesAsync(id, ctx.RequestAborted);
@@ -156,15 +145,6 @@ internal static partial class AdminEndpoints
 
             var session = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
             if (session is null)
-            {
-                return Results.NotFound(new SessionPromotionResponse
-                {
-                    Success = false,
-                    Target = request.Target,
-                    Error = "Session not found."
-                });
-            }
-            if (!SessionViewScope.CanViewSession(auth, session))
             {
                 return Results.NotFound(new SessionPromotionResponse
                 {
@@ -293,13 +273,6 @@ internal static partial class AdminEndpoints
             if (authResult.Failure is not null)
                 return authResult.Failure;
 
-            if (!SessionViewScope.IsAdmin(authResult.Authorization!))
-            {
-                var owned = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
-                if (owned is null || !SessionViewScope.CanViewSession(authResult.Authorization!, owned))
-                    return Results.NotFound(new MutationResponse { Success = false, Error = "Session not found." });
-            }
-
             var branches = await runtime.SessionManager.ListBranchesAsync(id, ctx.RequestAborted);
             return Results.Json(new SessionBranchListResponse { Items = branches }, CoreJsonContext.Default.SessionBranchListResponse);
         });
@@ -312,8 +285,6 @@ internal static partial class AdminEndpoints
 
             var session = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
             if (session is null)
-                return Results.NotFound("Session not found.");
-            if (!SessionViewScope.CanViewSession(authResult.Authorization!, session))
                 return Results.NotFound("Session not found.");
 
             var transcript = BuildTranscript(session);
@@ -337,16 +308,11 @@ internal static partial class AdminEndpoints
                 });
             }
 
+            if (await RejectUnlessSessionWriterAsync(runtime.SessionManager, sessionId, auth, ctx.RequestAborted) is { } restoreDenied)
+                return restoreDenied;
+
             var session = await runtime.SessionManager.LoadAsync(sessionId, ctx.RequestAborted);
             if (session is null)
-            {
-                return Results.NotFound(new OperationStatusResponse
-                {
-                    Success = false,
-                    Error = "Session for branch was not found."
-                });
-            }
-            if (!SessionViewScope.CanViewSession(auth, session))
             {
                 return Results.NotFound(new OperationStatusResponse
                 {
@@ -380,8 +346,6 @@ internal static partial class AdminEndpoints
             var session = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
             if (session is null)
                 return Results.NotFound(new MutationResponse { Success = false, Error = "Session not found." });
-            if (!SessionViewScope.CanViewSession(authResult.Authorization!, session))
-                return Results.NotFound(new MutationResponse { Success = false, Error = "Session not found." });
 
             return Results.Json(new SessionTimelineResponse
             {
@@ -400,8 +364,6 @@ internal static partial class AdminEndpoints
             var session = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
             if (session is null)
                 return Results.NotFound(new MutationResponse { Success = false, Error = "Session not found." });
-            if (!SessionViewScope.CanViewSession(authResult.Authorization!, session))
-                return Results.NotFound(new MutationResponse { Success = false, Error = "Session not found." });
 
             var diff = await runtime.SessionManager.BuildBranchDiffAsync(session, branchId, operations.SessionMetadata.Get(id), ctx.RequestAborted);
             return diff is null
@@ -415,13 +377,8 @@ internal static partial class AdminEndpoints
             if (authResult.Failure is not null)
                 return authResult.Failure;
             var auth = authResult.Authorization!;
-
-            if (!SessionViewScope.IsAdmin(auth))
-            {
-                var target = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
-                if (target is null || !SessionViewScope.CanViewSession(auth, target))
-                    return Results.NotFound(new OperationStatusResponse { Success = false, Error = "Session not found." });
-            }
+            if (await RejectUnlessSessionWriterAsync(runtime.SessionManager, id, auth, ctx.RequestAborted) is { } metadataDenied)
+                return metadataDenied;
 
             var requestPayload = await ReadJsonBodyAsync(ctx, CoreJsonContext.Default.SessionMetadataUpdateRequest);
             if (requestPayload.Failure is not null)
@@ -464,13 +421,11 @@ internal static partial class AdminEndpoints
             };
 
             var metadataById = operations.SessionMetadata.GetAll();
-            var summaries = (await SessionAdminPersistedListing.ListAllMatchingSummariesAsync(
-                    sessionAdminStore,
-                    query,
-                    metadataById,
-                    ctx.RequestAborted))
-                .Where(item => SessionViewScope.CanViewSummary(authResult.Authorization!, item))
-                .ToList();
+            var summaries = await SessionAdminPersistedListing.ListAllMatchingSummariesAsync(
+                sessionAdminStore,
+                query,
+                metadataById,
+                ctx.RequestAborted);
             var items = new List<SessionExportItem>();
             foreach (var summary in summaries)
             {
@@ -499,7 +454,6 @@ internal static partial class AdminEndpoints
                 return authResult.Failure;
 
             var ids = (await runtime.SessionManager.ListActiveAsync(ctx.RequestAborted))
-                .Where(s => SessionViewScope.CanViewSession(authResult.Authorization!, s))
                 .Select(s => s.Id)
                 .ToList();
 
@@ -512,15 +466,10 @@ internal static partial class AdminEndpoints
             if (authResult.Failure is not null)
                 return authResult.Failure;
             var auth = authResult.Authorization!;
+            if (await RejectUnlessSessionWriterAsync(runtime.SessionManager, id, auth, ctx.RequestAborted) is { } abortDenied)
+                return abortDenied;
             if (!EndpointHelpers.TryConsumeOperatorRateLimit(ctx, operations, auth, "admin.control", out var blockedByPolicyId))
                 return Results.Json(new OperationStatusResponse { Success = false, Message = $"Rate limit exceeded by policy '{blockedByPolicyId}'." }, CoreJsonContext.Default.OperationStatusResponse, statusCode: StatusCodes.Status429TooManyRequests);
-
-            if (!SessionViewScope.IsAdmin(auth))
-            {
-                var target = await runtime.SessionManager.LoadAsync(id, ctx.RequestAborted);
-                if (target is null || !SessionViewScope.CanViewSession(auth, target))
-                    return Results.Json(new OperationStatusResponse { Success = false, Message = $"Session '{id}' not found." }, CoreJsonContext.Default.OperationStatusResponse, statusCode: StatusCodes.Status404NotFound);
-            }
 
             // Cancel any in-flight execution via the session abort registry. Treat missing/idle
             // sessions as a no-op so the stop button stays responsive during reconnect races.
@@ -541,14 +490,14 @@ internal static partial class AdminEndpoints
             if (authResult.Failure is not null)
                 return authResult.Failure;
             var auth = authResult.Authorization!;
+            if (await RejectUnlessSessionWriterAsync(runtime.SessionManager, id, auth, ctx.RequestAborted) is { } deleteDenied)
+                return deleteDenied;
             if (!EndpointHelpers.TryConsumeOperatorRateLimit(ctx, operations, auth, "admin.control", out var blockedByPolicyId))
                 return Results.Json(new OperationStatusResponse { Success = false, Message = $"Rate limit exceeded by policy '{blockedByPolicyId}'." }, CoreJsonContext.Default.OperationStatusResponse, statusCode: StatusCodes.Status429TooManyRequests);
 
             var memoryStore = services.MemoryStore;
             var existing = await memoryStore.GetSessionAsync(id, ctx.RequestAborted);
             if (existing is null && !runtime.SessionManager.IsActive(id))
-                return Results.Json(new OperationStatusResponse { Success = false, Message = $"Session '{id}' not found." }, CoreJsonContext.Default.OperationStatusResponse, statusCode: StatusCodes.Status404NotFound);
-            if (existing is not null && !SessionViewScope.CanViewSession(auth, existing))
                 return Results.Json(new OperationStatusResponse { Success = false, Message = $"Session '{id}' not found." }, CoreJsonContext.Default.OperationStatusResponse, statusCode: StatusCodes.Status404NotFound);
 
             // Remove from active pool and persistent store

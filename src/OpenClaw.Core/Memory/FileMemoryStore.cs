@@ -1193,6 +1193,10 @@ public sealed class FileMemoryStore : IMemoryStore, ISessionSnapshotSource, IMem
                 if (query.State is { } state && session.State != state)
                     continue;
 
+                if (!string.IsNullOrEmpty(query.OwnerAccountId) &&
+                    !string.Equals(session.OwnerAccountId, query.OwnerAccountId, StringComparison.Ordinal))
+                    continue;
+
                 if (!string.IsNullOrEmpty(query.Search))
                 {
                     var s = query.Search;
@@ -1210,7 +1214,6 @@ public sealed class FileMemoryStore : IMemoryStore, ISessionSnapshotSource, IMem
                     Id = session.Id,
                     ChannelId = session.ChannelId,
                     SenderId = session.SenderId,
-                    AuthenticatedUserId = session.AuthenticatedUserId,
                     StableSessionId = session.StableSessionBinding?.ExternalSessionId,
                     StableSessionNamespace = session.StableSessionBinding?.Namespace,
                     StableSessionOwnerKey = session.StableSessionBinding?.OwnerKey,
@@ -1225,7 +1228,8 @@ public sealed class FileMemoryStore : IMemoryStore, ISessionSnapshotSource, IMem
                     RunState = session.RunState,
                     BackgroundRunObjective = session.BackgroundRun?.Objective,
                     BackgroundContinuationCount = session.BackgroundRun?.ContinuationCount ?? 0,
-                    IsActive = false
+                    IsActive = false,
+                    OwnerAccountId = session.OwnerAccountId
                 });
             }
             catch { /* skip corrupt files */ }

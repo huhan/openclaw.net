@@ -844,6 +844,22 @@
                 position: static;
             }
 
+            /* Wide admin tables (operator accounts, sessions) must scroll horizontally
+               instead of clipping the trailing Actions column on narrow layouts. */
+            .card > #operator-accounts-output,
+            .card > div > table,
+            .card > table {
+                overflow-x: auto;
+            }
+
+            #operator-accounts-output {
+                overflow-x: auto;
+            }
+
+            #operator-accounts-output table {
+                min-width: 760px;
+            }
+
             .section-nav a {
                 white-space: nowrap;
             }

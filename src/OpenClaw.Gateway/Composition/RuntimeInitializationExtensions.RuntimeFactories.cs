@@ -150,7 +150,7 @@ internal static partial class RuntimeInitializationExtensions
             new MemorySearchTool((IMemoryNoteSearch)services.MemoryStore),
             new ProjectMemoryTool(services.MemoryStore, projectId),
             new SessionsTool(services.SessionManager, services.Pipeline.InboundWriter),
-            new SessionSearchTool(services.SessionSearchStore),
+            new SessionSearchTool(services.SessionSearchStore, services.SessionManager),
             new ProfileReadTool(services.UserProfileStore),
             new AutomationTool(services.AutomationService, services.Pipeline),
             new VisionAnalyzeTool(services.GeminiMultimodalService),

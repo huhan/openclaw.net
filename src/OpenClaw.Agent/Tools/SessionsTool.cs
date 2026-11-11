@@ -14,13 +14,19 @@ namespace OpenClaw.Agent.Tools;
 /// read their recent history, and dispatch messages to them.
 /// Acts as an Agent-to-Agent/Channel bridge.
 /// </summary>
-public sealed class SessionsTool : ITool
+/// <remarks>
+/// Cross-session visibility is ownership-scoped: an authenticated session may only
+/// see and touch sessions owned by the same account (unowned system/legacy sessions
+/// are invisible to it). Callers without an owned session (bootstrap CLI, system
+/// flows) keep the unscoped view.
+/// </remarks>
+public sealed class SessionsTool : IToolWithContext
 {
     private readonly SessionManager _sessionManager;
     private readonly ChannelWriter<InboundMessage> _pipelineChannel;
 
     public string Name => "sessions";
-    public string Description => "Lists active OpenClaw sessions, reads their history, or sends a cross-session message to another sub-agent or user channel.";
+    public string Description => "Lists active OpenClaw sessions, reads their history, or sends a cross-session message to another sub-agent or user channel. Only sessions owned by the current account are visible.";
 
     public string ParameterSchema => """
     {
@@ -47,45 +53,54 @@ public sealed class SessionsTool : ITool
 
     public Type ParametersType => typeof(SessionsArgs);
 
-    public async ValueTask<string> ExecuteAsync(string argumentsJson, CancellationToken ct)
+    public ValueTask<string> ExecuteAsync(string argumentsJson, CancellationToken ct)
+        => ValueTask.FromResult("Error: sessions tool requires execution context.");
+
+    public async ValueTask<string> ExecuteAsync(string argumentsJson, ToolExecutionContext context, CancellationToken ct)
     {
         var args = JsonSerializer.Deserialize(argumentsJson, SessionsSerializerContext.Default.SessionsArgs);
         if (args is null) return "Error: Invalid arguments.";
 
+        // The executing session's owner is the visibility lens: identical semantics to the
+        // SessionAccess.CanWrite check the gateway applied before this turn was allowed to run.
+        var viewerOwnerAccountId = context.Session.OwnerAccountId;
+
         switch (args.Action)
         {
             case "list":
-                return await HandleListAsync(ct);
+                return await HandleListAsync(viewerOwnerAccountId, ct);
             case "history":
                 if (string.IsNullOrWhiteSpace(args.SessionId)) return "Error: session_id is required for history action.";
-                return await HandleHistoryAsync(args.SessionId, args.Limit ?? 10, ct);
+                return await HandleHistoryAsync(args.SessionId, args.Limit ?? 10, viewerOwnerAccountId, ct);
             case "send":
                 if (string.IsNullOrWhiteSpace(args.SessionId)) return "Error: target session_id is required for send action.";
                 if (string.IsNullOrWhiteSpace(args.Message)) return "Error: message content is required for send action.";
-                return await HandleSendAsync(args.SessionId, args.Message, ct);
+                return await HandleSendAsync(args.SessionId, args.Message, viewerOwnerAccountId, ct);
             default:
                 return "Error: Unknown action. Valid actions are 'list', 'history', 'send'.";
         }
     }
 
-    private async Task<string> HandleListAsync(CancellationToken ct)
+    private async Task<string> HandleListAsync(string? viewerOwnerAccountId, CancellationToken ct)
     {
         var active = await _sessionManager.ListActiveAsync(ct);
-        if (active.Count == 0) return "No active sessions found.";
+        var visible = active.Where(session => SessionAccess.CanRead(session, viewerOwnerAccountId)).ToList();
+        if (visible.Count == 0) return "No active sessions found.";
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Total Active Sessions: {active.Count}");
-        foreach (var session in active)
+        sb.AppendLine($"Total Active Sessions: {visible.Count}");
+        foreach (var session in visible)
         {
             sb.AppendLine($"- ID: {session.Id}, Channel: {session.ChannelId}, Sender: {session.SenderId}, State: {session.State}");
         }
         return sb.ToString();
     }
 
-    private async Task<string> HandleHistoryAsync(string sessionId, int limit, CancellationToken ct)
+    private async Task<string> HandleHistoryAsync(string sessionId, int limit, string? viewerOwnerAccountId, CancellationToken ct)
     {
         var session = await _sessionManager.LoadAsync(sessionId, ct);
-        if (session is null) return $"Error: Session '{sessionId}' not found.";
+        if (session is null || !SessionAccess.CanRead(session, viewerOwnerAccountId))
+            return $"Error: Session '{sessionId}' not found.";
 
         if (session.History.Count == 0) return "Session history is currently empty.";
 
@@ -100,10 +115,12 @@ public sealed class SessionsTool : ITool
         return sb.ToString();
     }
 
-    private async Task<string> HandleSendAsync(string targetSessionId, string message, CancellationToken ct)
+    private async Task<string> HandleSendAsync(string targetSessionId, string message, string? viewerOwnerAccountId, CancellationToken ct)
     {
         var targetContext = await _sessionManager.LoadAsync(targetSessionId, ct);
         if (targetContext is null) return $"Error: Target session '{targetSessionId}' does not exist.";
+        if (!SessionAccess.CanWrite(targetContext, viewerOwnerAccountId, isAdmin: false))
+            return $"Error: {SessionAccess.DeniedMessage}";
 
         var msg = new InboundMessage
         {

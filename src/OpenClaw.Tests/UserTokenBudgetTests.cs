@@ -187,7 +187,9 @@ public sealed class UserTokenBudgetTests : IDisposable
         var middleware = new UserTokenBudgetMiddleware(
             maxTokensPerUser: 1_000,
             ctx => ctx.SenderId,
-            userId => ledger.GetUsage(userId).TotalTokens,
+            // Pin the lookup to the seeded day: production wires GetUsage() to "now",
+            // which after midnight correctly reads a fresh zeroed bucket.
+            userId => ledger.GetUsage(userId, Day1).TotalTokens,
             userId => false,
             NullLogger.Instance);
         var context = CreateContext("hi");
@@ -208,7 +210,7 @@ public sealed class UserTokenBudgetTests : IDisposable
         var middleware = new UserTokenBudgetMiddleware(
             1_000,
             ctx => ctx.SenderId,
-            userId => ledger.GetUsage(userId).TotalTokens,
+            userId => ledger.GetUsage(userId, Day1).TotalTokens,
             userId => false,
             NullLogger.Instance);
         var context = CreateContext("short");
@@ -228,7 +230,7 @@ public sealed class UserTokenBudgetTests : IDisposable
         var middleware = new UserTokenBudgetMiddleware(
             1_000,
             ctx => ctx.SenderId,
-            userId => ledger.GetUsage(userId).TotalTokens,
+            userId => ledger.GetUsage(userId, Day1).TotalTokens,
             userId => false,
             NullLogger.Instance);
         var context = CreateContext(new string('a', 5_000));

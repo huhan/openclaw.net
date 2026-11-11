@@ -97,9 +97,9 @@ while (true)
         await using var app = builder.Build();
         // Route the static SecretResolver facade through the DI resolver
         // before the runtime initializes (which may resolve secret refs).
-        ResolverAccessor.Use(app.Services);
+        ResolverAccessor.Use(app.Services); 
 #if !OPENCLAW_VAULT_EXCLUDED
-        if (app.Services.GetService<VaultRefPrewarmService>() is { } vaultPrewarm)
+        if (app.Services.GetService<VaultRefPrewarmService>() is { } vaultPrewarm) 
             await vaultPrewarm.WarmAsync(app.Lifetime.ApplicationStopping);
 #endif
         app.Lifetime.ApplicationStarted.Register(() => started = true);
@@ -109,7 +109,7 @@ while (true)
 
         app.InitializeMcpRuntime(runtime);
 
-        // Browser WebSocket API cannot set custom Authorization headers.
+        // Browser WebSocket API cannot set custom Authorization headers. 
         // Bridge /ws?token=... into Authorization: Bearer ... so standard auth can validate it.
         // Only active when AllowQueryStringToken is enabled.
         app.Use(async (ctx, next) =>
